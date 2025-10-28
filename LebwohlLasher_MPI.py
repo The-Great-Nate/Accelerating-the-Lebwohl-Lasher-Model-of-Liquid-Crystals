@@ -277,26 +277,27 @@ def MC_step(arr,Ts,nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rig
     xran = np.random.randint(startCol,high=endCol, size=(local_width,nmax))
     yran = np.random.randint(0,high=nmax, size=(local_width,nmax))
     aran = np.random.normal(scale=scale, size=(local_width,nmax))
-    for i in range(local_width):
-        for j in range(nmax):
-            ix = xran[i,j]
-            iy = yran[i,j]
-            ang = aran[i,j]
-            en0 = one_energy(arr,ix,iy,nmax, leftCol, rightCol)
-            arr[ix,iy] += ang
-            en1 = one_energy(arr,ix,iy,nmax, leftCol, rightCol)
-            if en1<=en0:
-                accept += 1
-            else:
-            # Now apply the Monte Carlo test - compare
-            # exp( -(E_new - E_old) / T* ) >= rand(0,1)
-                boltz = np.exp( -(en1 - en0) / Ts )
+    for eo in range(0,2):
+      for i in range(eo,local_width,2):
+          for j in range(nmax):
+              ix = xran[i,j]
+              iy = yran[i,j]
+              ang = aran[i,j]
+              en0 = one_energy(arr,ix,iy,nmax, leftCol, rightCol)
+              arr[ix,iy] += ang
+              en1 = one_energy(arr,ix,iy,nmax, leftCol, rightCol)
+              if en1<=en0:
+                  accept += 1
+              else:
+              # Now apply the Monte Carlo test - compare
+              # exp( -(E_new - E_old) / T* ) >= rand(0,1)
+                  boltz = np.exp( -(en1 - en0) / Ts )
 
-                if boltz >= np.random.uniform(0.0,1.0):
-                    accept += 1
-                else:
-                    arr[ix,iy] -= ang
-    update_boundaries(arr, nmax, comm, leftNeighbour, rightNeighbour, leftCol, rightCol)
+                  if boltz >= np.random.uniform(0.0,1.0):
+                      accept += 1
+                  else:
+                      arr[ix,iy] -= ang
+      update_boundaries(arr, nmax, comm, leftNeighbour, rightNeighbour, leftCol, rightCol)
     acceptGlobal = comm.reduce(accept, op = MPI.SUM, root = 0)
     if rank == 0:
       return acceptGlobal/(nmax*nmax)
@@ -330,7 +331,7 @@ def main(program, nsteps, nmax, temp, pflag):
     Returns:
       NULL
     """
-    
+    np.random.seed(42)
     ####### MPI TYPE THINGS BEGIN #######
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -342,7 +343,6 @@ def main(program, nsteps, nmax, temp, pflag):
       # Plot initial frame of lattice
       plotdat(lattice,pflag,nmax, lattice[0,:], lattice[-1,:])
       # Create arrays to store energy, acceptance ratio and order parameter
-      print("I got beyond the first plotdat")
       
     energy = np.zeros(nsteps+1,dtype=np.float64)
     ratio = np.zeros(nsteps+1,dtype=np.float64)
@@ -390,7 +390,7 @@ def main(program, nsteps, nmax, temp, pflag):
     energy[0] = all_energy(localLatt,nmax, comm, rank, leftCol, rightCol)
     ratio[0] = 0.5 # ideal value
     order[0] = get_order(localLatt,nmax, comm, rank)
-    print("I GOT TO BEFORE MC GOES FUNNY")
+    
     # Begin doing and timing some MC steps.
     initial = time.time()
     for it in range(1,nsteps+1):
@@ -399,7 +399,6 @@ def main(program, nsteps, nmax, temp, pflag):
         order[it] = get_order(localLatt,nmax, comm, rank)
     final = time.time()
     runtime = final-initial
-    print(f"{rank}\n{localLatt}")
     lattice = comm.reduce(localLatt, op = MPI.SUM, root = 0)
     ### Stuff abt getting the final lattice together here before final output ###
     
