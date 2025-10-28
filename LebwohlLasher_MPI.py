@@ -246,7 +246,7 @@ def get_order(arr,nmax, comm, rank):
     else:
       return
 #=======================================================================
-def MC_step(arr,Ts,nmax):
+def MC_step(arr,Ts,nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -279,9 +279,9 @@ def MC_step(arr,Ts,nmax):
             ix = xran[i,j]
             iy = yran[i,j]
             ang = aran[i,j]
-            en0 = one_energy(arr,ix,iy,nmax)
+            en0 = one_energy(arr,ix,iy,nmax, leftCol, rightCol)
             arr[ix,iy] += ang
-            en1 = one_energy(arr,ix,iy,nmax)
+            en1 = one_energy(arr,ix,iy,nmax, leftCol, rightCol)
             if en1<=en0:
                 accept += 1
             else:
@@ -294,6 +294,20 @@ def MC_step(arr,Ts,nmax):
                 else:
                     arr[ix,iy] -= ang
     return accept/(nmax*nmax)
+#=======================================================================
+def update_boundaries(arr, leftNeighbour, rightNeighbour, comm, nmax, leftCol, rightCol):
+  leftColSend = np.ascontiguousarray(arr[0,:])
+  rightColSend = np.ascontiguousarray(arr[-1,:])
+  leftColRecv = np.empty(nmax)
+  rightColRecv = np.empty(nmax)
+  
+  comm.Sendrecv(sendbuf=rightColSend, dest=rightNeighbour, sendtag=1, recvbuf=leftColRecv, source=leftNeighbour, recvtag=1)
+  
+  comm.Sendrecv(sendbuf=leftColSend, dest=leftNeighbour, sendtag=0, recvbuf=rightColRecv, source=rightNeighbour, recvtag=0)
+
+  leftCol = leftColRecv
+  rightCol = rightColRecv
+
 #=======================================================================
 def main(program, nsteps, nmax, temp, pflag):
     """
@@ -348,7 +362,7 @@ def main(program, nsteps, nmax, temp, pflag):
     # Obtain rank of neighbours
     leftNeighbour = (rank-1)%size
     rightNeighbour = (rank+1)%size
-  
+
     # Set up lattice each rank stores locally  in the correct positions
     localLatt = np.zeros((nmax, nmax))
     ownedLatt = comm.scatter(chunks, root=0)  # Locally stored lattice for each proc
@@ -357,13 +371,13 @@ def main(program, nsteps, nmax, temp, pflag):
     # Store the left and right columns beyond what a rank stores
     leftCol = np.empty(nmax)
     rightCol = np.empty(nmax)
-    
+
     # Each proc sends boundary cols to next rank
       # Rightmost col is sent to right Neighbour
       # Leftmost col is sent to the left neigbour
-    comm.Sendrecv(localLatt[-1, :], dest=rightNeighbour, sendtag=0, recvbuf=leftCol, source=leftNeighbour, recvtag=0)
-    comm.Sendrecv(localLatt[0, :], dest=leftNeighbour, sendtag=1, recvbuf=rightCol, source=rightNeighbour, recvtag=1)
-    
+    comm.Sendrecv(sendbuf=ownedLatt[-1, :], dest=rightNeighbour, sendtag=0, recvbuf=leftCol, source=leftNeighbour, recvtag=0)
+    comm.Sendrecv(sendbuf=ownedLatt[0, :], dest=leftNeighbour, sendtag=1, recvbuf=rightCol, source=rightNeighbour, recvtag=1)
+
     # Set initial values in arrays
     energy[0] = all_energy(localLatt,nmax, comm, rank, leftCol, rightCol)
     ratio[0] = 0.5 # ideal value
@@ -372,13 +386,13 @@ def main(program, nsteps, nmax, temp, pflag):
     # Begin doing and timing some MC steps.
     initial = time.time()
     for it in range(1,nsteps+1):
-        ratio[it] = MC_step(localLatt,temp,nmax)
-        energy[it] = all_energy(localLatt,nmax)
-        order[it] = get_order(localLatt,nmax)
+        ratio[it] = MC_step(localLatt,temp,nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol)
+        energy[it] = all_energy(localLatt,nmax, comm, rank, leftCol, rightCol)
+        order[it] = get_order(localLatt,nmax, comm, rank)
     final = time.time()
     runtime = final-initial
     lattice = comm.reduce(localLatt, op = MPI.SUM, root = 0)
-    ### Stuff abt getting the final lattice together here ###
+    ### Stuff abt getting the final lattice together here before final output ###
     
     if rank == 0:
       # Final outputs
