@@ -246,7 +246,7 @@ def get_order(arr,nmax, comm, rank):
     else:
       return
 #=======================================================================
-def MC_step(arr,Ts,nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol):
+def MC_step(arr,Ts,nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol, startCol, endCol):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -260,7 +260,9 @@ def MC_step(arr,Ts,nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rig
       that are successful.  Generally aim to keep this around 0.5 for
       efficient simulation.
     ########## THIS FUNCTION HAS BEEN MPI'd FOR BEING TOO SLOW >:( ##########    
-
+  Generate random indices within what each proc is supposed to handle
+  Do the MC_step as normal
+  Each proc gets an update on what their neighbouring cols are
 	Returns:
 	  accept/(nmax**2) (float) = acceptance ratio for current MCS.
     """
@@ -271,10 +273,11 @@ def MC_step(arr,Ts,nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rig
     # with temperature.
     scale=0.1+Ts
     accept = 0
-    xran = np.random.randint(0,high=nmax, size=(nmax,nmax))
-    yran = np.random.randint(0,high=nmax, size=(nmax,nmax))
-    aran = np.random.normal(scale=scale, size=(nmax,nmax))
-    for i in range(nmax):
+    local_width = arr.shape[0]
+    xran = np.random.randint(startCol,high=endCol, size=(local_width,nmax))
+    yran = np.random.randint(0,high=nmax, size=(local_width,nmax))
+    aran = np.random.normal(scale=scale, size=(local_width,nmax))
+    for i in range(local_width):
         for j in range(nmax):
             ix = xran[i,j]
             iy = yran[i,j]
@@ -293,9 +296,14 @@ def MC_step(arr,Ts,nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rig
                     accept += 1
                 else:
                     arr[ix,iy] -= ang
-    return accept/(nmax*nmax)
+    update_boundaries(arr, nmax, comm, leftNeighbour, rightNeighbour, leftCol, rightCol)
+    acceptGlobal = comm.reduce(accept, op = MPI.SUM, root = 0)
+    if rank == 0:
+      return acceptGlobal/(nmax*nmax)
+    else:
+      return None
 #=======================================================================
-def update_boundaries(arr, leftNeighbour, rightNeighbour, comm, nmax, leftCol, rightCol):
+def update_boundaries(arr, nmax, comm, leftNeighbour, rightNeighbour, leftCol, rightCol):
   leftColSend = np.ascontiguousarray(arr[0,:])
   rightColSend = np.ascontiguousarray(arr[-1,:])
   leftColRecv = np.empty(nmax)
@@ -386,11 +394,12 @@ def main(program, nsteps, nmax, temp, pflag):
     # Begin doing and timing some MC steps.
     initial = time.time()
     for it in range(1,nsteps+1):
-        ratio[it] = MC_step(localLatt,temp,nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol)
+        ratio[it] = MC_step(localLatt,temp,nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol, startCol, endCol)
         energy[it] = all_energy(localLatt,nmax, comm, rank, leftCol, rightCol)
         order[it] = get_order(localLatt,nmax, comm, rank)
     final = time.time()
     runtime = final-initial
+    print(f"{rank}\n{localLatt}")
     lattice = comm.reduce(localLatt, op = MPI.SUM, root = 0)
     ### Stuff abt getting the final lattice together here before final output ###
     
@@ -399,7 +408,7 @@ def main(program, nsteps, nmax, temp, pflag):
       print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(program, nmax,nsteps,temp,order[nsteps-1],runtime))
       # Plot final frame of lattice and generate output file
       savedat(lattice,nsteps,temp,runtime,ratio,energy,order,nmax)
-      plotdat(lattice,pflag,nmax, lattice[0,:], lattice[-1:])
+      plotdat(lattice,pflag,nmax, lattice[0,:], lattice[-1,:])
 #=======================================================================
 # Main part of program, getting command line arguments and calling
 # main simulation function.
