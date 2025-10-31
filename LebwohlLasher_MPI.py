@@ -262,7 +262,8 @@ def MC_step(arr,Ts,nmax, numCols, comm, rank, leftNeighbour, rightNeighbour, lef
       efficient simulation.
     ########## THIS FUNCTION HAS BEEN MPI'd FOR BEING TOO SLOW >:( ##########    
   Generate random indices within what each proc is supposed to handle
-  Do the MC_step as normal
+  Handle only even then odd columns to prevent conflicts
+  Do the MC_step as normal (twice, one for odd and one for even)
   Each proc gets an update on what their neighbouring cols are
 	Returns:
 	  accept/(nmax**2) (float) = acceptance ratio for current MCS.
@@ -274,7 +275,6 @@ def MC_step(arr,Ts,nmax, numCols, comm, rank, leftNeighbour, rightNeighbour, lef
     # with temperature.
     scale=0.1+Ts
     accept = 0
-    np.random.seed(42 + rank) # i try to use this to reproduce results, i dont think it's worked for this context or my mpi is bad
     xran = np.random.randint(0,high=numCols, size=(numCols,nmax))
     yran = np.random.randint(0,high=nmax, size=(numCols,nmax))
     aran = np.random.normal(scale=scale, size=(numCols,nmax))
@@ -308,16 +308,10 @@ def MC_step(arr,Ts,nmax, numCols, comm, rank, leftNeighbour, rightNeighbour, lef
       return None
 #=======================================================================
 def update_boundaries(arr, nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol, startCol, endCol):
-
-  #print(f"{rank}\n{arr}")
-  #print(f"{rank}Sending this Col to the Right\n{arr[endCol-1, :]}")
   comm.Sendrecv(sendbuf=arr[-1, :], dest=rightNeighbour, sendtag=0, recvbuf=leftCol, source=leftNeighbour, recvtag=0)
   comm.Sendrecv(sendbuf=arr[0, :], dest=leftNeighbour, sendtag=1, recvbuf=rightCol, source=rightNeighbour, recvtag=1)
-  
-  #print(f"{rank}Recieved this Col from the left\n{leftCol}")
-  
 #=======================================================================
-def main(program, nsteps, nmax, temp, pflag):
+def main(program, nsteps, nmax, temp, pflag, file = 0):
     """
     Arguments:
 	  program (string) = the name of the program;
@@ -334,10 +328,12 @@ def main(program, nsteps, nmax, temp, pflag):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
-    
     if rank == 0:
       # Create and initialise lattice
-      lattice = initdat(nmax)
+      if file == 0:
+        lattice = initdat(nmax)
+      else:
+        lattice = np.loadtxt(file)
       # Plot initial frame of lattice
       plotdat(lattice,pflag,nmax, lattice[0,:], lattice[-1,:])
     
@@ -348,14 +344,16 @@ def main(program, nsteps, nmax, temp, pflag):
     
     numCols = nmax // size # No. cols each proc handles
     startCol = rank * numCols # Index of start col for each proc
-    
     # Gets index of last column each proc handles
     if rank != (size-1): 
         endCol = (rank+1)*numCols
     else:
         endCol = nmax
     
-    # Distribute relevant column data to other ranks    
+    numCols = endCol - startCol
+    cols_per_rank = comm.gather(numCols, root=0)
+    
+    # Distribute relevant column data to other ranks. Store each chunk in rank 0 first
     if rank == 0:
       chunks = []
       for i in range(size):
@@ -364,16 +362,14 @@ def main(program, nsteps, nmax, temp, pflag):
           chunks.append(lattice[start:end, :].copy())
     else:
       chunks = None
-    
-    # Obtain rank of neighbours
-    leftNeighbour = (rank-1)%size
-    rightNeighbour = (rank+1)%size
 
     # Set up lattice each rank stores locally  in the correct positions
     localLatt = np.zeros((nmax, nmax))
-    ownedLatt = comm.scatter(chunks, root=0)  # Locally stored lattice for each proc
-
-    localLatt[startCol:endCol, :] = ownedLatt
+    ownedLatt = comm.scatter(chunks, root=0)  # Rank 0 distributes to other ranks respec. chunks
+            
+    # Obtain rank of neighbours
+    leftNeighbour = (rank-1)%size
+    rightNeighbour = (rank+1)%size
     # Store the left and right columns beyond what a rank stores
     leftCol = np.empty(nmax)
     rightCol = np.empty(nmax)
@@ -384,33 +380,43 @@ def main(program, nsteps, nmax, temp, pflag):
     comm.Sendrecv(sendbuf=ownedLatt[-1, :], dest=rightNeighbour, sendtag=0, recvbuf=leftCol, source=leftNeighbour, recvtag=0)
     comm.Sendrecv(sendbuf=ownedLatt[0, :], dest=leftNeighbour, sendtag=1, recvbuf=rightCol, source=rightNeighbour, recvtag=1)
     
-    if rank == 1:
-      print(f"{rank}\n{leftCol}")
-      print(f"{rank}\n{rightCol}")
-    
     # Set initial values in arrays
     energy[0] = all_energy(ownedLatt,nmax, comm, rank, leftCol, rightCol, startCol, endCol)
     ratio[0] = 0.5 # ideal value
     order[0] = get_order(ownedLatt,nmax, comm, rank)
     
     # Begin doing and timing some MC steps.
-    initial = time.time()
+    initial = MPI.Wtime()
     for it in range(1,nsteps+1):
         ratio[it] = MC_step(ownedLatt,temp,nmax, numCols, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol, startCol, endCol)
         energy[it] = all_energy(ownedLatt,nmax, comm, rank, leftCol, rightCol, startCol, endCol)
         order[it] = get_order(ownedLatt,nmax, comm, rank)
-    final = time.time()
+    final = MPI.Wtime()
     runtime = final-initial
 
-    final_lattice = np.zeros((nmax, nmax))
-    comm.Gather(ownedLatt, recvbuf = final_lattice, root = 0)
-    #final_lattice = comm.reduce(localLatt, op = MPI.SUM, root = 0)
-    ### Stuff abt getting the final lattice together here before final output ###
+    ### Store final output into Rank 0
+    if rank == 0:
+      final_lattice = np.zeros((nmax, nmax)) # On the tin
+      sendcounts = [] # No. of values each rank will send
+      displs = [] # Where each chunk of each rank goes in the final_lattice (ordering by rank is done by default)
+      
+      for numCols_i in cols_per_rank:
+          elements = nmax * numCols_i
+          sendcounts.append(elements)
+          
+      offset = 0
+      for count in sendcounts:
+          displs.append(offset)
+          offset += count
+      recvbuf = (final_lattice.ravel(), sendcounts, displs, MPI.DOUBLE) # Final buffer tuple
+    else:
+      recvbuf = None
+    
+    owned_flat = ownedLatt.ravel() # Flattens each rank's local lattice to 1D
+    comm.Gatherv(sendbuf=owned_flat, recvbuf=recvbuf, root=0) # All ranks write to FInal Lattice
     
     if rank == 0:
       # Final outputs
-      print()
-      print(final_lattice)
       print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(program, nmax,nsteps,temp,order[nsteps-1],runtime))
       # Plot final frame of lattice and generate output file
       savedat(final_lattice,nsteps,size,temp,runtime,ratio,energy,order,nmax)
@@ -427,6 +433,14 @@ if __name__ == '__main__':
         TEMPERATURE = float(sys.argv[3])
         PLOTFLAG = int(sys.argv[4])
         main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG)
+    if int(len(sys.argv)) == 6:
+        PROGNAME = sys.argv[0]
+        ITERATIONS = int(sys.argv[1])
+        SIZE = int(sys.argv[2])
+        TEMPERATURE = float(sys.argv[3])
+        PLOTFLAG = int(sys.argv[4])
+        FILE = sys.argv[5]
+        main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG, FILE)
     else:
         print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG>".format(sys.argv[0]))
 #=======================================================================

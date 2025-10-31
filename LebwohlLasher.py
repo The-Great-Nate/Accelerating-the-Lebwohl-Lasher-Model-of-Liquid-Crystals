@@ -160,7 +160,6 @@ def one_energy(arr,ix,iy,nmax):
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
     ang = arr[ix,iy]-arr[ix,iym]
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
-    print(type(en))
     return en
 #=======================================================================
 def all_energy(arr,nmax):
@@ -255,7 +254,7 @@ def MC_step(arr,Ts,nmax):
                     arr[ix,iy] -= ang
     return accept/(nmax*nmax)
 #=======================================================================
-def main(program, nsteps, nmax, temp, pflag):
+def main(program, nsteps, nmax, temp, pflag, file = 0):
     """
     Arguments:
 	  program (string) = the name of the program;
@@ -269,7 +268,11 @@ def main(program, nsteps, nmax, temp, pflag):
       NULL
     """
     # Create and initialise lattice
-    lattice = initdat(nmax)
+    if file == 0:
+        lattice = initdat(nmax)
+    else:
+        lattice = np.loadtxt(file)
+      
     # Plot initial frame of lattice
     plotdat(lattice,pflag,nmax)
     # Create arrays to store energy, acceptance ratio and order parameter
@@ -307,6 +310,17 @@ if __name__ == '__main__':
         TEMPERATURE = float(sys.argv[3])
         PLOTFLAG = int(sys.argv[4])
         main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG)
+    if int(len(sys.argv)) == 6:
+        PROGNAME = sys.argv[0]
+        ITERATIONS = int(sys.argv[1])
+        SIZE = int(sys.argv[2])
+        TEMPERATURE = float(sys.argv[3])
+        PLOTFLAG = int(sys.argv[4])
+        FILE = sys.argv[5]
+        main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG, FILE)
     else:
         print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG>".format(sys.argv[0]))
+        print("OR WITH 5 ARGS")
+        print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG> <FILE>".format(sys.argv[0]))
 #=======================================================================
+
