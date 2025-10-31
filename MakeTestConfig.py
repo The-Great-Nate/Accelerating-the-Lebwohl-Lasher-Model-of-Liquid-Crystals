@@ -21,7 +21,7 @@ def main(name, size):
     return
 #======================================================================
 if __name__ == '__main__':
-    if int(len(sys.argv)) == 2:
+    if int(len(sys.argv)) == 3:
         PROGNAME = sys.argv[0]
         NAME = str(sys.argv[1])
         SIZE = int(sys.argv[2])
