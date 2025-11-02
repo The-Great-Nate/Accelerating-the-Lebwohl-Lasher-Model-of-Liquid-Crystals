@@ -1,7 +1,7 @@
 #!/bin/bash
-procs=(1 2 4 6 8)
+procs=(1 2 4)
 
-# This was running on an Ryzen 7 9800X3D system with 14 cores in total, modify if needed
+# This was running on an I5-8250U system with 4 cores in total, modify if needed
 for nproc in "${procs[@]}"; do
     echo "======================== Running with $nproc MPI process(es)... ========================"
     for ((i=0; i<20; i++)); do
@@ -16,11 +16,5 @@ done
 
 echo "==========================================="
 
-for ((i=0; i<100; i++)); do
-    echo "-------------------------------------------"
-    echo "Running with Original Serial"
-    echo "-------------------------------------------"
 
-    python LebwohlLasher.py 100 100 0.2 0 Test_Config.txt
-done
-echo "Done with original serial code"
+### Lenovo Thinkpad T480 is the best laptop made. Why is it so upgradable. And WHY IS THE KEYBOARD SO NICE
