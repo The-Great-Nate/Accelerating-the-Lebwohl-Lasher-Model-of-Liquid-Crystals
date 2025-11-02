@@ -1,2 +1,7 @@
 *.pdf
 *.txt
+*Cython.c
+*.so
+*.o
+*.c
+build/
