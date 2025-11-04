@@ -5,7 +5,7 @@ echo " CYTHONISE CYTHONISE CYTHONISE "
 echo "-------------------------------------------"
 python builders/setup_LebwohlLasher_Cython.py build_ext -fi
 
-sizes=(25 50 100 200 500 1000)
+sizes=(25 50 100 200)
 
 for size in "${sizes[@]}"; do
     echo "============= at $size big. ============="

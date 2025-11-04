@@ -1,8 +1,8 @@
 #!/bin/bash
-sizes=(25 50 100 200 500 1000)
+sizes=(25 50 100 200)
 
 for size in "${sizes[@]}"; do
-    for ((i=0; i<100; i++)); do
+    for ((i=0; i<20; i++)); do
         echo "-------------------------------------------"
         echo "Running Vectorised Form"
         echo "-------------------------------------------"

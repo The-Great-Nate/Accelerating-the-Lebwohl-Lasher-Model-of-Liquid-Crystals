@@ -6,7 +6,7 @@ echo "-------------------------------------------"
 python builders/setup_LebwohlLasher_MPI_Cython.py build_ext -fi
 
 procs=(1 2 4)
-sizes=(25 50 100 200 500 1000)
+sizes=(25 50 100 200)
 # This was running on an I5-8250U system with 4 cores in total, modify if needed
 for size in "${sizes[@]}"; do
     for nproc in "${procs[@]}"; do

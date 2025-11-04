@@ -4,10 +4,10 @@ threads=(1 2 4)
 echo "-------------------------------------------"
 echo " CYTHONISE CYTHONISE CYTHONISE "
 echo "-------------------------------------------"
-python builders/setup_LebwohlLasher_MPI_Cython.py build_ext -fi
+python builders/setup_LebwohlLasher_Cython_OpenMP.py build_ext -fi
 
 # This was running on an I5-8250U system with 4 cores in total, modify if needed
-sizes=(25 50 100 200 500 1000)
+sizes=(25 50 100 200)
 
 for size in "${sizes[@]}"; do
     for thread in "${threads[@]}"; do
