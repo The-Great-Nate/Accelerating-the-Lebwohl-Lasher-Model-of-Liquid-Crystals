@@ -267,7 +267,7 @@ cdef double MC_step(cnp.ndarray[cnp.double_t, ndim=2] arr,double Ts,int nmax):
 
     cdef cnp.ndarray[cnp.int32_t,ndim=2] xran = np.asarray(xran_obj, dtype=np.int32)
     cdef cnp.ndarray[cnp.int32_t,ndim=2] yran = np.asarray(yran_obj, dtype=np.int32)
-    cdef cnp.ndarray[cnp.float64_t, ndim=2] aran = np.asarray(xran_obj, dtype=np.float64)
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] aran = np.asarray(aran_obj, dtype=np.float64)
     
     for i in range(nmax):
         for j in range(nmax):
