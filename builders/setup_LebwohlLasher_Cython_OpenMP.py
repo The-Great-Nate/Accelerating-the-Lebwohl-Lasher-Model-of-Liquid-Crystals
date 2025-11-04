@@ -7,8 +7,8 @@ import numpy as np
 
 ext_modules = [
     Extension(
-        "LebwohlLasher_Cython_OpenMP",
-        ["LebwohlLasher_Cython_OpenMP.pyx"],
+        "programs.LebwohlLasher_Cython_OpenMP",
+        ["programs/LebwohlLasher_Cython_OpenMP.pyx"],
         extra_compile_args=['-fopenmp','-v', '-g'],
         include_dirs=[np.get_include()], 
         extra_link_args=['-fopenmp', '-g'],
@@ -17,6 +17,6 @@ ext_modules = [
     )
 ]
 
-setup(name="LebwohlLasher_Cython_OpenMP",
+setup(name="programs.LebwohlLasher_Cython_OpenMP",
       ext_modules=cythonize(ext_modules))
 

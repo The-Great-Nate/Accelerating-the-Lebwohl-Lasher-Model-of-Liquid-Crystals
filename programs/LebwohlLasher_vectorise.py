@@ -28,7 +28,6 @@ import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import numba as nb
 
 #=======================================================================
 def initdat(nmax):
@@ -66,16 +65,18 @@ def plotdat(arr,pflag,nmax):
     """
     if pflag==0:
         return
-    u = np.cos(arr)
-    v = np.sin(arr)
+    arr2d = arr.reshape((nmax,nmax))
+    u = np.cos(arr2d)
+    v = np.sin(arr2d)
     x = np.arange(nmax)
     y = np.arange(nmax)
-    cols = np.zeros((nmax,nmax))
+    cols = np.zeros(nmax * nmax)
     if pflag==1: # colour the arrows according to energy
         mpl.rc('image', cmap='rainbow')
         for i in range(nmax):
             for j in range(nmax):
-                cols[i,j] = one_energy(arr,i,j,nmax)
+                flattened_index = i*nmax +j
+                cols[flattened_index] = one_energy(arr,i,j,nmax)
         norm = plt.Normalize(cols.min(), cols.max())
     elif pflag==2: # colour the arrows according to angle
         mpl.rc('image', cmap='hsv')
@@ -87,15 +88,16 @@ def plotdat(arr,pflag,nmax):
         norm = plt.Normalize(vmin=0, vmax=1)
 
     quiveropts = dict(headlength=0,pivot='middle',headwidth=1,scale=1.1*nmax)
+    cols = cols.reshape((nmax*nmax))
     fig, ax = plt.subplots()
     q = ax.quiver(x, y, u, v, cols,norm=norm, **quiveropts)
     ax.set_aspect('equal')
     plt.show()
 #=======================================================================
-def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax):
+def savedat(nsteps,Ts,runtime,ratio,energy,order,nmax):
     """
     Arguments:
-	  arr (float(nmax,nmax)) = array that contains lattice data;
+	  arr (float(nmax,nmax)) = array that contains lattice data; <---- It's not even used here so I deleted it :)
 	  nsteps (int) = number of Monte Carlo steps (MCS) performed;
 	  Ts (float) = reduced temperature (range 0 to 2);
 	  ratio (float(nsteps)) = array of acceptance ratios per MCS;
@@ -112,7 +114,7 @@ def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax):
     """
     # Create filename based on current date and time.
     current_datetime = datetime.datetime.now().strftime("%a-%d-%b-%Y-at-%I-%M-%S%p")
-    filename = "numba_JIT/LL-Output-{:s}.txt".format(current_datetime)
+    filename = "Vectorised/LL-Output-{:s}.txt".format(current_datetime)
     FileOut = open(filename,"w")
     # Write a header with run parameters
     print("#=====================================================",file=FileOut)
@@ -129,7 +131,6 @@ def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax):
         print("   {:05d}    {:6.4f} {:12.4f}  {:6.4f} ".format(i,ratio[i],energy[i],order[i]),file=FileOut)
     FileOut.close()
 #=======================================================================
-@nb.njit
 def one_energy(arr,ix,iy,nmax):
     """
     Arguments:
@@ -150,21 +151,27 @@ def one_energy(arr,ix,iy,nmax):
     ixm = (ix-1)%nmax # of the neighbours
     iyp = (iy+1)%nmax # with wraparound
     iym = (iy-1)%nmax #
+
+    flattened_index = ix*nmax + iy
+    flattened_index_xp = ixp*nmax + iy
+    flattened_index_xm = ixm*nmax + iy
+    flattened_index_yp = ix*nmax + iyp
+    flattened_index_ym = ix*nmax + iym
 #
 # Add together the 4 neighbour contributions
 # to the energy
 #
-    ang = arr[ix,iy]-arr[ixp,iy]
+    ang = arr[flattened_index]-arr[flattened_index_xp]
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
-    ang = arr[ix,iy]-arr[ixm,iy]
+    ang = arr[flattened_index]-arr[flattened_index_xm]
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
-    ang = arr[ix,iy]-arr[ix,iyp]
+    ang = arr[flattened_index]-arr[flattened_index_yp]
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
-    ang = arr[ix,iy]-arr[ix,iym]
+    ang = arr[flattened_index]-arr[flattened_index_ym]
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
     return en
 #=======================================================================
-@nb.njit
+#=======================================================================
 def all_energy(arr,nmax):
     """
     Arguments:
@@ -176,13 +183,43 @@ def all_energy(arr,nmax):
 	Returns:
 	  enall (float) = reduced energy of lattice.
     """
-    enall = 0.0
-    for i in range(nmax):
-        for j in range(nmax):
-            enall += one_energy(arr,i,j,nmax)
+
+    arr = arr.reshape((nmax,nmax)) # Needed for the below function's indexing to work correctly
+
+    ### Arrays to store each direction's energy contribution.
+      # Making empty arrays as temporary storage for each direction
+    energyArr = np.full_like(arr,0)
+    ang = np.empty_like(arr)
+    shift = np.empty_like(arr)
+
+    #left comparison
+    shift[:,:-1] = arr[:,1:]
+    shift[:,-1] = arr[:,0]
+    ang = arr-shift
+    energyArr = energyArr + 0.5*(1.0 - 3.0*np.cos(ang)**2)
+
+    #right comparison
+    shift[:,1:] = arr[:,:-1]
+    shift[:,0] = arr[:,-1]
+    ang = arr-shift
+    energyArr = energyArr + 0.5*(1.0 - 3.0*np.cos(ang)**2)
+
+    #down comparison
+    shift[1:][:] = arr[:-1][:]
+    shift[0][:] = arr[-1][:]
+    ang = arr-shift
+    energyArr = energyArr + 0.5*(1.0 - 3.0*np.cos(ang)**2)
+
+    #up comparison
+    shift[:-1][:] = arr[1:][:]
+    shift[-1][:] = arr[0][:]
+    ang = arr-shift
+    energyArr = energyArr + 0.5*(1.0 - 3.0*np.cos(ang)**2)
+
+    enall = np.sum(energyArr)
+    
     return enall
 #=======================================================================
-@nb.njit
 def get_order(arr,nmax):
     """
     Arguments:
@@ -197,21 +234,29 @@ def get_order(arr,nmax):
     """
     Qab = np.zeros((3,3))
     delta = np.eye(3,3)
+    nmax_squared = nmax * nmax
     #
-    # Generate a 3D unit vector for each cell (i,j) and
-    # put it in a (3,i,j) array.
+    # Attempted to replicate the functionality of get_order
+    # based on looking at how a and b changed in the loop in comparison to accessing Qab
     #
-    lab = np.vstack((np.cos(arr),np.sin(arr),np.zeros_like(arr))).reshape(3,nmax,nmax)
-    for a in range(3):
-        for b in range(3):
-            for i in range(nmax):
-                for j in range(nmax):
-                    Qab[a,b] += 3*lab[a,i,j]*lab[b,i,j] - delta[a,b]
+
+    cos_stack = np.cos(arr)
+    sin_stack = np.sin(arr)
+    cosSin = np.sum(3 * cos_stack * sin_stack) #first term in Qab[a,b] term
+    cosSq = np.sum(3*np.power(np.cos(arr),2)) - nmax_squared
+    sinSq = np.sum(3*np.power(np.sin(arr),2)) - nmax_squared
+    
+    Qab[0,0] = cosSq
+    Qab[0,1] = cosSin
+    Qab[1,0] = cosSin
+    Qab[1,1] = sinSq
+    Qab[2,2] = -nmax_squared
+
     Qab = Qab/(2*nmax*nmax)
     eigenvalues,eigenvectors = np.linalg.eig(Qab)
     return eigenvalues.max()
-#=======================================================================
 
+#=======================================================================
 def MC_step(arr,Ts,nmax):
     """
     Arguments:
@@ -235,28 +280,39 @@ def MC_step(arr,Ts,nmax):
     # with temperature.
     scale=0.1+Ts
     accept = 0
-    xran = np.random.randint(0,high=nmax, size=(nmax,nmax))
-    yran = np.random.randint(0,high=nmax, size=(nmax,nmax))
-    aran = np.random.normal(scale=scale, size=(nmax,nmax))
-    for i in range(nmax):
-        for j in range(nmax):
-            ix = xran[i,j]
-            iy = yran[i,j]
-            ang = aran[i,j]
-            en0 = one_energy(arr,ix,iy,nmax)
-            arr[ix,iy] += ang
-            en1 = one_energy(arr,ix,iy,nmax)
-            if en1<=en0:
-                accept += 1
-            else:
-            # Now apply the Monte Carlo test - compare
-            # exp( -(E_new - E_old) / T* ) >= rand(0,1)
-                boltz = np.exp( -(en1 - en0) / Ts )
+    nmax_squared = nmax * nmax
+    xran = np.random.randint(0,high=nmax, size=nmax_squared)
+    yran = np.random.randint(0,high=nmax, size=nmax_squared)
+    aran = np.random.normal(scale=scale, size=nmax_squared)
 
-                if boltz >= np.random.uniform(0.0,1.0):
-                    accept += 1
-                else:
-                    arr[ix,iy] -= ang
+    ### Sort by row then by column for sequential sampling
+    sort_idx = np.lexsort((yran, xran)) 
+
+    xran = xran[sort_idx]
+    yran = yran[sort_idx]
+    aran = aran[sort_idx]
+    
+    ### "The for loop is the worst invention known to mankind.."
+    ### I couldn't get rid of this one when trying to increase access efficiency soz :'(
+    for i in range(nmax_squared):
+          ix = xran[i]
+          iy = yran[i]
+          ang = aran[i]
+          en0 = one_energy(arr,ix,iy,nmax)
+          flattened_index = ix*nmax + iy
+          arr[flattened_index] += ang
+          en1 = one_energy(arr,ix,iy,nmax)
+          if en1<=en0:
+              accept += 1
+          else:
+          # Now apply the Monte Carlo test - compare
+          # exp( -(E_new - E_old) / T* ) >= rand(0,1)
+              boltz = np.exp( -(en1 - en0) / Ts )
+
+              if boltz >= np.random.uniform(0.0,1.0):
+                  accept += 1
+              else:
+                  arr[flattened_index] -= ang
     return accept/(nmax*nmax)
 #=======================================================================
 def main(program, nsteps, nmax, temp, pflag, file = 0):
@@ -277,9 +333,10 @@ def main(program, nsteps, nmax, temp, pflag, file = 0):
         lattice = initdat(nmax)
     else:
         lattice = np.loadtxt(file)
-      
+
+    arr = lattice.ravel()
     # Plot initial frame of lattice
-    plotdat(lattice,pflag,nmax)
+    plotdat(arr,pflag,nmax)
     # Create arrays to store energy, acceptance ratio and order parameter
     energy = np.zeros(nsteps+1,dtype=np.float64)
     ratio = np.zeros(nsteps+1,dtype=np.float64)
@@ -288,21 +345,21 @@ def main(program, nsteps, nmax, temp, pflag, file = 0):
     energy[0] = all_energy(lattice,nmax)
     ratio[0] = 0.5 # ideal value
     order[0] = get_order(lattice,nmax)
-
+    
     # Begin doing and timing some MC steps.
     initial = time.time()
     for it in range(1,nsteps+1):
-        ratio[it] = MC_step(lattice,temp,nmax)
-        energy[it] = all_energy(lattice,nmax)
-        order[it] = get_order(lattice,nmax)
+        ratio[it] = MC_step(arr,temp,nmax)
+        energy[it] = all_energy(arr,nmax)
+        order[it] = get_order(arr,nmax)
     final = time.time()
     runtime = final-initial
-    
+
     # Final outputs
     print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(program, nmax,nsteps,temp,order[nsteps-1],runtime))
     # Plot final frame of lattice and generate output file
-    savedat(lattice,nsteps,temp,runtime,ratio,energy,order,nmax)
-    plotdat(lattice,pflag,nmax)
+    savedat(nsteps,temp,runtime,ratio,energy,order,nmax)
+    plotdat(arr,pflag,nmax)
 #=======================================================================
 # Main part of program, getting command line arguments and calling
 # main simulation function.
@@ -315,7 +372,7 @@ if __name__ == '__main__':
         TEMPERATURE = float(sys.argv[3])
         PLOTFLAG = int(sys.argv[4])
         main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG)
-    if int(len(sys.argv)) == 6:
+    elif int(len(sys.argv)) == 6:
         PROGNAME = sys.argv[0]
         ITERATIONS = int(sys.argv[1])
         SIZE = int(sys.argv[2])
@@ -325,4 +382,7 @@ if __name__ == '__main__':
         main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG, FILE)
     else:
         print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG>".format(sys.argv[0]))
+        print("OR WITH 5 ARGS")
+        print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG> <FILE>".format(sys.argv[0]))
 #=======================================================================
+

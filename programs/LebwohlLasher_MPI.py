@@ -29,11 +29,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from mpi4py import MPI
-cimport numpy as cnp
-from cython cimport boundscheck,wraparound
 
 #=======================================================================
-cdef initdat(int nmax):
+def initdat(nmax):
     """
     Arguments:
       nmax (int) = size of lattice to create (nmax,nmax).
@@ -44,7 +42,7 @@ cdef initdat(int nmax):
 	Returns:
 	  arr (float(nmax,nmax)) = array to hold lattice.
     """
-    cdef cnp.ndarray[cnp.double_t, ndim=2] arr = np.random.random_sample((nmax,nmax))*2.0*np.pi
+    arr = np.random.random_sample((nmax,nmax))*2.0*np.pi
     return arr
 #=======================================================================
 def plotdat(arr,pflag,nmax, leftCol, rightCol):
@@ -114,7 +112,7 @@ def savedat(arr,nsteps,size,Ts,runtime,ratio,energy,order,nmax):
     """
     # Create filename based on current date and time.
     current_datetime = datetime.datetime.now().strftime("%a-%d-%b-%Y-at-%I-%M-%S%p")
-    filename = "MPI_Cython/LL-Output-{:s}.txt".format(current_datetime)
+    filename = "data/MPI/LL-Output-{:s}.txt".format(current_datetime)
     FileOut = open(filename,"w")
     # Write a header with run parameters
     print("#=====================================================",file=FileOut)
@@ -131,36 +129,38 @@ def savedat(arr,nsteps,size,Ts,runtime,ratio,energy,order,nmax):
     for i in range(nsteps+1):
         print("   {:05d}    {:6.4f} {:12.4f}  {:6.4f} ".format(i,ratio[i],energy[i],order[i]),file=FileOut)
     FileOut.close()
-#===========================================================
-cdef double one_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int ix,int iy,int nmax, cnp.ndarray[cnp.double_t, ndim=1] leftCol, cnp.ndarray[cnp.double_t, ndim=1] rightCol, int startCol, int endCol):
+#=======================================================================
+def one_energy(arr,ix,iy,nmax, leftCol, rightCol, startCol, endCol):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
 	  ix (int) = x lattice coordinate of cell;
 	  iy (int) = y lattice coordinate of cell;
-      nmax (int) = side length of square lattice.
+    nmax (int) = side length of square lattice.
+    leftCol (float(nmax)) = array containing column to left of arr;
+    rightCol (float(nmax)) = array containing column to right of arr.
     Description:
       Function that computes the energy of a single cell of the
       lattice taking into account periodic boundaries.  Working with
       reduced energy (U/epsilon), equivalent to setting epsilon=1 in
       equation (1) in the project notes.
+  ########## THIS FUNCTION HAS BEEN MPI'd FOR BEING TOO SLOW >:( ##########
+      Each proc handles its own subset of the lattice and the boundary past each proc has to be accounted for
 	Returns:
 	  en (float) = reduced energy of cell.
     """
-    cdef double en = 0.0
-    cdef double ang
-
-    cdef int ixp = (ix+1) # These are the coordinates
-    cdef int ixm = (ix-1) # of the neighbours
-    cdef int iyp = (iy+1)%nmax # with wraparound
-    cdef int iym = (iy-1)%nmax #
+    en = 0.0
+    ixp = (ix+1) # These are the coordinates
+    ixm = (ix-1) # of the neighbours
+    iyp = (iy+1)%nmax # with wraparound (MPI funny)
+    iym = (iy-1)%nmax #
     
-    cdef int local_width = arr.shape[0]
-
 #
 # Add together the 4 neighbour contributions
 # to the energy
 #
+    
+    local_width = arr.shape[0]
     # Handles case where x co ord is the last col proc can handle,
     if (ix == local_width-1): 
         ang = arr[ix,iy]-rightCol[iy]   # use extra column given to it
@@ -181,34 +181,35 @@ cdef double one_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int ix,int iy,int n
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
     return en
 #=======================================================================
-cdef double all_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int nmax,   comm, int rank, cnp.ndarray[cnp.double_t, ndim=1] leftCol, cnp.ndarray[cnp.double_t, ndim=1] rightCol, int startCol, int endCol):
+def all_energy(arr,nmax, comm, rank, leftCol, rightCol, startCol, endCol):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
       nmax (int) = side length of square lattice.
+    comm = MPI comm world object
+    rank = RANK OF MPI PROCESS
+    leftCol (float(nmax)) = array containing column to left of arr;
+    rightCol (float(nmax)) = array containing column to right of arr.
     Description:
       Function to compute the energy of the entire lattice. Output
       is in reduced units (U/epsilon).
+  ########## THIS FUNCTION HAS BEEN MPI'd FOR BEING TOO SLOW >:( ##########    
+    Each proc stores its own total energy, but this func needs to return the total energy of lattice
 	Returns:
 	  enall (float) = reduced energy of lattice.
     """
-    cdef double enlocal = 0.0
-    cdef double enall = 0.0
-    cdef int i
-    cdef int j
-    cdef int local_width = arr.shape[0]
-
-    for i in range(local_width):
+    enall = 0.0
+    enlocal = 0.0
+    for i in range(arr.shape[0]):
         for j in range(nmax):
-            enlocal += one_energy(arr, i, j, nmax, leftCol, rightCol, startCol, endCol)
-    py_enall = comm.reduce(enlocal, op=MPI.SUM, root=0)
-
+          enlocal += one_energy(arr,i,j,nmax,leftCol,rightCol, startCol, endCol)
+    enall = comm.reduce(enlocal, op=MPI.SUM, root = 0) # All proc find energy of their corresponding columns then reduce sum op sends to 0
+    
     if rank == 0:
-        enall = <double> py_enall # Casts the py_enall object as a double
         return enall
     else:
-        return 0.0
-#=======================================================================#
+        return 
+#=======================================================================
 def get_order(arr,nmax, comm, rank):
     """
     Arguments:
@@ -244,9 +245,9 @@ def get_order(arr,nmax, comm, rank):
       eigenvalues,eigenvectors = np.linalg.eig(QabGlobal)
       return eigenvalues.max()
     else:
-      return 0.0
+      return
 #=======================================================================
-def MC_step(cnp.ndarray[cnp.double_t, ndim=2] arr,double Ts,int nmax, int numCols,   comm, int rank, int leftNeighbour, int rightNeighbour, cnp.ndarray[cnp.double_t, ndim=1] leftCol, cnp.ndarray[cnp.double_t, ndim=1] rightCol, int startCol, int endCol):
+def MC_step(arr,Ts,nmax, numCols, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol, startCol, endCol):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -272,21 +273,11 @@ def MC_step(cnp.ndarray[cnp.double_t, ndim=2] arr,double Ts,int nmax, int numCol
     # using lots of individual calls.  "scale" sets the width
     # of the distribution for the angle changes - increases
     # with temperature.
-    #
-
-    cdef double scale=0.1+Ts
-    cdef int accept = 0
-    cdef int i,j,ix,iy,eo
-    cdef double ang,en0,en1,boltz
-
-    cdef object xran_obj = np.random.randint(0, high=numCols, size=(numCols, nmax))
-    cdef object yran_obj = np.random.randint(0, high=nmax, size=(numCols, nmax))
-    cdef object aran_obj = np.random.normal(scale=scale, size=(numCols,nmax))
-
-    cdef cnp.ndarray[cnp.int32_t,ndim=2] xran = np.asarray(xran_obj, dtype=np.int32)
-    cdef cnp.ndarray[cnp.int32_t,ndim=2] yran = np.asarray(yran_obj, dtype=np.int32)
-    cdef cnp.ndarray[cnp.float64_t, ndim=2] aran = np.asarray(xran_obj, dtype=np.float64)
-
+    scale=0.1+Ts
+    accept = 0
+    xran = np.random.randint(0,high=numCols, size=(numCols,nmax))
+    yran = np.random.randint(0,high=nmax, size=(numCols,nmax))
+    aran = np.random.normal(scale=scale, size=(numCols,nmax))
     for eo in range(0,2):
       for i in range(eo, numCols,2):
           for j in range(nmax):
@@ -314,14 +305,12 @@ def MC_step(cnp.ndarray[cnp.double_t, ndim=2] arr,double Ts,int nmax, int numCol
     if rank == 0:
       return acceptGlobal/(nmax*nmax)
     else:
-      return 0.0
+      return None
 #=======================================================================
-def update_boundaries(cnp.ndarray[cnp.double_t, ndim=2] arr, int nmax,   comm, int rank, int leftNeighbour, int rightNeighbour, cnp.ndarray[cnp.double_t, ndim=1] leftCol, cnp.ndarray[cnp.double_t, ndim=1] rightCol, int startCol, int endCol):
+def update_boundaries(arr, nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol, startCol, endCol):
   comm.Sendrecv(sendbuf=arr[-1, :], dest=rightNeighbour, sendtag=0, recvbuf=leftCol, source=leftNeighbour, recvtag=0)
   comm.Sendrecv(sendbuf=arr[0, :], dest=leftNeighbour, sendtag=1, recvbuf=rightCol, source=rightNeighbour, recvtag=1)
 #=======================================================================
-@boundscheck(False)
-@wraparound(False)
 def main(program, nsteps, nmax, temp, pflag, file = 0):
     """
     Arguments:
@@ -336,13 +325,6 @@ def main(program, nsteps, nmax, temp, pflag, file = 0):
       NULL
     """
     ####### MPI TYPE THINGS BEGIN #######
-    cdef int figN = 0
-    cdef double runtime
-    cdef double initial, final
-    cdef int it, rank, size, numCols, leftNeighbour, rightNeighbour
-
-    cdef cnp.ndarray[cnp.double_t, ndim=2] lattice, ownedLatt
-
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
@@ -356,9 +338,9 @@ def main(program, nsteps, nmax, temp, pflag, file = 0):
       plotdat(lattice,pflag,nmax, lattice[0,:], lattice[-1,:])
     
     # Create arrays to store energy, acceptance ratio and order parameter 
-    cdef cnp.ndarray[cnp.double_t, ndim=1] energy = np.zeros(nsteps+1,dtype=np.float64)
-    cdef cnp.ndarray[cnp.double_t, ndim=1] ratio = np.zeros(nsteps+1,dtype=np.float64)
-    cdef cnp.ndarray[cnp.double_t, ndim=1] order = np.zeros(nsteps+1,dtype=np.float64)
+    energy = np.zeros(nsteps+1,dtype=np.float64)
+    ratio = np.zeros(nsteps+1,dtype=np.float64)
+    order = np.zeros(nsteps+1,dtype=np.float64)
     
     numCols = nmax // size # No. cols each proc handles
     startCol = rank * numCols # Index of start col for each proc
@@ -439,3 +421,26 @@ def main(program, nsteps, nmax, temp, pflag, file = 0):
       # Plot final frame of lattice and generate output file
       savedat(final_lattice,nsteps,size,temp,runtime,ratio,energy,order,nmax)
       plotdat(final_lattice,pflag,nmax, final_lattice[0,:], final_lattice[-1,:])
+#=======================================================================
+# Main part of program, getting command line arguments and calling
+# main simulation function.
+#
+if __name__ == '__main__':
+    if int(len(sys.argv)) == 5:
+        PROGNAME = sys.argv[0]
+        ITERATIONS = int(sys.argv[1])
+        SIZE = int(sys.argv[2])
+        TEMPERATURE = float(sys.argv[3])
+        PLOTFLAG = int(sys.argv[4])
+        main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG)
+    elif int(len(sys.argv)) == 6:
+        PROGNAME = sys.argv[0]
+        ITERATIONS = int(sys.argv[1])
+        SIZE = int(sys.argv[2])
+        TEMPERATURE = float(sys.argv[3])
+        PLOTFLAG = int(sys.argv[4])
+        FILE = sys.argv[5]
+        main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG, FILE)
+    else:
+        print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG>".format(sys.argv[0]))
+#=======================================================================

@@ -1,5 +1,5 @@
 import sys
-import LebwohlLasher_MPI as LL_MPI_C
+import LebwohlLasher_Cython_MPI as LL_MPI_C
 
 
 if int(len(sys.argv)) == 5:

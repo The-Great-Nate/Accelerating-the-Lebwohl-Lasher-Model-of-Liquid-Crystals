@@ -9,7 +9,7 @@ if int(len(sys.argv)) == 5:
     TEMPERATURE = float(sys.argv[3])
     PLOTFLAG = int(sys.argv[4])
     LL_C.main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG)
-if int(len(sys.argv)) == 6:
+elif int(len(sys.argv)) == 6:
     PROGNAME = sys.argv[0]
     ITERATIONS = int(sys.argv[1])
     SIZE = int(sys.argv[2])

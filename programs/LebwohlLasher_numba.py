@@ -28,14 +28,10 @@ import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-cimport numpy as cnp
-cimport openmp
-from libc.math cimport sin, cos, exp
-from cython cimport boundscheck,wraparound
-from cython.parallel cimport prange
+import numba as nb
 
 #=======================================================================
-cdef initdat(int nmax):
+def initdat(nmax):
     """
     Arguments:
       nmax (int) = size of lattice to create (nmax,nmax).
@@ -46,7 +42,7 @@ cdef initdat(int nmax):
 	Returns:
 	  arr (float(nmax,nmax)) = array to hold lattice.
     """
-    cdef cnp.ndarray[cnp.double_t, ndim=2] arr = np.random.random_sample((nmax,nmax))*2.0*np.pi
+    arr = np.random.random_sample((nmax,nmax))*2.0*np.pi
     return arr
 #=======================================================================
 def plotdat(arr,pflag,nmax):
@@ -96,7 +92,7 @@ def plotdat(arr,pflag,nmax):
     ax.set_aspect('equal')
     plt.show()
 #=======================================================================
-def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax,threads):
+def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -116,13 +112,12 @@ def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax,threads):
     """
     # Create filename based on current date and time.
     current_datetime = datetime.datetime.now().strftime("%a-%d-%b-%Y-at-%I-%M-%S%p")
-    filename = "Cython_OpenMP/LL-Output-{:s}.txt".format(current_datetime)
+    filename = "data/numba_JIT/LL-Output-{:s}.txt".format(current_datetime)
     FileOut = open(filename,"w")
     # Write a header with run parameters
     print("#=====================================================",file=FileOut)
     print("# File created:        {:s}".format(current_datetime),file=FileOut)
     print("# Size of lattice:     {:d}x{:d}".format(nmax,nmax),file=FileOut)
-    print("# Number of Threads  {:d}".format(threads),file=FileOut)
     print("# Number of MC steps:  {:d}".format(nsteps),file=FileOut)
     print("# Reduced temperature: {:5.3f}".format(Ts),file=FileOut)
     print("# Run time (s):        {:8.6f}".format(runtime),file=FileOut)
@@ -134,9 +129,8 @@ def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax,threads):
         print("   {:05d}    {:6.4f} {:12.4f}  {:6.4f} ".format(i,ratio[i],energy[i],order[i]),file=FileOut)
     FileOut.close()
 #=======================================================================
-@boundscheck(False)
-@wraparound(False)
-cdef double one_energy(double[:,:] arr,int ix,int iy,int nmax) nogil:
+@nb.njit
+def one_energy(arr,ix,iy,nmax):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -151,34 +145,27 @@ cdef double one_energy(double[:,:] arr,int ix,int iy,int nmax) nogil:
 	Returns:
 	  en (float) = reduced energy of cell.
     """
-    cdef double en = 0.0
-    cdef double ang
-
-    cdef int ixp = (ix+1)%nmax # These are the coordinates
-    cdef int ixm = (ix-1)%nmax # of the neighbours
-    cdef int iyp = (iy+1)%nmax # with wraparound
-    cdef int iym = (iy-1)%nmax #
+    en = 0.0
+    ixp = (ix+1)%nmax # These are the coordinates
+    ixm = (ix-1)%nmax # of the neighbours
+    iyp = (iy+1)%nmax # with wraparound
+    iym = (iy-1)%nmax #
 #
 # Add together the 4 neighbour contributions
 # to the energy
 #
     ang = arr[ix,iy]-arr[ixp,iy]
-    c = cos(ang)
-    en += 0.5*(1.0 - 3.0*c*c)
+    en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
     ang = arr[ix,iy]-arr[ixm,iy]
-    c = cos(ang)
-    en += 0.5*(1.0 - 3.0*c*c)
+    en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
     ang = arr[ix,iy]-arr[ix,iyp]
-    c = cos(ang)
-    en += 0.5*(1.0 - 3.0*c*c)
+    en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
     ang = arr[ix,iy]-arr[ix,iym]
-    c = cos(ang)
-    en += 0.5*(1.0 - 3.0*c*c)
+    en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
     return en
 #=======================================================================
-@boundscheck(False)
-@wraparound(False)
-cdef double all_energy(double[:,:] arr,int nmax, int threads):
+@nb.njit
+def all_energy(arr,nmax):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -189,21 +176,14 @@ cdef double all_energy(double[:,:] arr,int nmax, int threads):
 	Returns:
 	  enall (float) = reduced energy of lattice.
     """
-    cdef double enall = 0.0
-    cdef double enloc
-    cdef int i
-    cdef int j
-    for i in prange(nmax, nogil=True, num_threads=threads):
-      enloc = 0.0 
-      for j in range(nmax):
-          enloc += one_energy(arr,i,j,nmax)
-      with gil:
-        enall += enloc
+    enall = 0.0
+    for i in range(nmax):
+        for j in range(nmax):
+            enall += one_energy(arr,i,j,nmax)
     return enall
 #=======================================================================
-@boundscheck(False)
-@wraparound(False)
-def get_order(double[:,:] arr,int nmax, int threads):
+@nb.njit
+def get_order(arr,nmax):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -215,56 +195,28 @@ def get_order(double[:,:] arr,int nmax, int threads):
 	Returns:
 	  max(eigenvalues(Qab)) (float) = order parameter for lattice.
     """
-    Qab_np = np.zeros((3,3), dtype=np.float64)
-    local_Qab_np = np.zeros((nmax,3,3), dtype=np.float64)
-    delta_np = np.eye(3,3, dtype=np.float64)
-    lab_np = np.empty((3,nmax,nmax), dtype=np.float64)
-    
-    cdef double[:,:] Qab = Qab_np
-    cdef double[:,:,:] local_Qab = local_Qab_np
-    cdef double[:,:]  delta = delta_np
-    cdef double[:,:,:]  lab = lab_np
-    
-    cdef int i
-    cdef int j
-    cdef int a
-    cdef int b
-    cdef int qsum
-    
-    cdef cnp.ndarray[cnp.double_t, ndim=1] eigenvalues
+    Qab = np.zeros((3,3))
+    delta = np.eye(3,3)
     #
     # Generate a 3D unit vector for each cell (i,j) and
     # put it in a (3,i,j) array.
     #
-    for i in prange(nmax, nogil=True, num_threads=threads):
-        for j in range(nmax):
-            lab[0,i,j] = cos(arr[i,j])
-            lab[1,i,j] = sin(arr[i,j])
-            lab[2,i,j] = 0.0
-
-    
-    for i in prange(nmax, nogil=True, num_threads=threads):
-      for j in range (nmax):
-        for a in range(3):
-          for b in range(3):
-              local_Qab[i,a,b] += 3*lab[a,i,j]*lab[b,i,j] - delta[a,b]
-          
+    lab = np.vstack((np.cos(arr),np.sin(arr),np.zeros_like(arr))).reshape(3,nmax,nmax)
     for a in range(3):
-      for b in range(3):
-        for i in range(nmax):
-          Qab[a,b] += local_Qab[i,a,b]
-        Qab[a,b] = Qab[a,b]/(2*nmax*nmax)
-    
-    eigenvalues, _ = np.linalg.eig(Qab)
-    return np.max(eigenvalues)
+        for b in range(3):
+            for i in range(nmax):
+                for j in range(nmax):
+                    Qab[a,b] += 3*lab[a,i,j]*lab[b,i,j] - delta[a,b]
+    Qab = Qab/(2*nmax*nmax)
+    eigenvalues,eigenvectors = np.linalg.eig(Qab)
+    return eigenvalues.max()
 #=======================================================================
-@boundscheck(False)
-@wraparound(False)
-cdef double MC_step(double[:,:] arr,double Ts,int nmax):
+
+def MC_step(arr,Ts,nmax):
     """
     Arguments:
-          arr (float(nmax,nmax)) = array that contains lattice data;
-          Ts (float) = reduced temperature (range 0 to 2);
+	  arr (float(nmax,nmax)) = array that contains lattice data;
+	  Ts (float) = reduced temperature (range 0 to 2);
       nmax (int) = side length of square lattice.
     Description:
       Function to perform one MC step, which consists of an average
@@ -273,29 +225,19 @@ cdef double MC_step(double[:,:] arr,double Ts,int nmax):
       ratio for information.  This is the fraction of attempted changes
       that are successful.  Generally aim to keep this around 0.5 for
       efficient simulation.
-        Returns:
-          accept/(nmax**2) (float) = acceptance ratio for current MCS.
+	Returns:
+	  accept/(nmax**2) (float) = acceptance ratio for current MCS.
     """
-
+    #
     # Pre-compute some random numbers.  This is faster than
     # using lots of individual calls.  "scale" sets the width
     # of the distribution for the angle changes - increases
     # with temperature.
-    
-    # Here we just replace definitions with c type definitions to remove overheads. We could try and do more c-like functions in loops but it works for now and translating it all like that could take a long time
-    cdef double scale=0.1+Ts
-    cdef int accept = 0
-    cdef int i,j,ix,iy
-    cdef double ang,en0,en1,boltz
-
-    cdef object xran_obj = np.random.randint(0, high=nmax, size=(nmax, nmax))
-    cdef object yran_obj = np.random.randint(0, high=nmax, size=(nmax, nmax))
-    cdef object aran_obj = np.random.normal(scale=scale, size=(nmax,nmax))
-
-    cdef cnp.ndarray[cnp.int32_t,ndim=2] xran = np.asarray(xran_obj, dtype=np.int32)
-    cdef cnp.ndarray[cnp.int32_t,ndim=2] yran = np.asarray(yran_obj, dtype=np.int32)
-    cdef cnp.ndarray[cnp.float64_t, ndim=2] aran = np.asarray(aran_obj, dtype=np.float64)
-    
+    scale=0.1+Ts
+    accept = 0
+    xran = np.random.randint(0,high=nmax, size=(nmax,nmax))
+    yran = np.random.randint(0,high=nmax, size=(nmax,nmax))
+    aran = np.random.normal(scale=scale, size=(nmax,nmax))
     for i in range(nmax):
         for j in range(nmax):
             ix = xran[i,j]
@@ -304,24 +246,20 @@ cdef double MC_step(double[:,:] arr,double Ts,int nmax):
             en0 = one_energy(arr,ix,iy,nmax)
             arr[ix,iy] += ang
             en1 = one_energy(arr,ix,iy,nmax)
-            
             if en1<=en0:
                 accept += 1
             else:
-                # Now apply the Monte Carlo test - compare
-                # exp( -(E_new - E_old) / T* ) >= rand(0,1)
+            # Now apply the Monte Carlo test - compare
+            # exp( -(E_new - E_old) / T* ) >= rand(0,1)
                 boltz = np.exp( -(en1 - en0) / Ts )
 
                 if boltz >= np.random.uniform(0.0,1.0):
                     accept += 1
                 else:
                     arr[ix,iy] -= ang
-    
     return accept/(nmax*nmax)
 #=======================================================================
-@boundscheck(False)
-@wraparound(False)
-def main(str program,int nsteps,int nmax,double temp,int pflag, str file = "0", int threads = 1):
+def main(program, nsteps, nmax, temp, pflag, file = 0):
     """
     Arguments:
 	  program (string) = the name of the program;
@@ -334,43 +272,36 @@ def main(str program,int nsteps,int nmax,double temp,int pflag, str file = "0", 
     Returns:
       NULL
     """
-
-    cdef int figN = 0
-    cdef double runtime
-    cdef double initial, final
-    cdef int it
-
     # Create and initialise lattice
-    if file == "0":
-        lattice_import = initdat(nmax)
+    if file == 0:
+        lattice = initdat(nmax)
     else:
-        lattice_import = np.loadtxt(file)
-    lattice_import = np.ascontiguousarray(lattice_import, dtype=np.float64)
-    cdef double[:,:] lattice = lattice_import
+        lattice = np.loadtxt(file)
+      
     # Plot initial frame of lattice
     plotdat(lattice,pflag,nmax)
     # Create arrays to store energy, acceptance ratio and order parameter
-    cdef cnp.ndarray[cnp.double_t, ndim=1] energy = np.zeros(nsteps+1,dtype=np.float64)
-    cdef cnp.ndarray[cnp.double_t, ndim=1] ratio = np.zeros(nsteps+1,dtype=np.float64)
-    cdef cnp.ndarray[cnp.double_t, ndim=1] order = np.zeros(nsteps+1,dtype=np.float64)
+    energy = np.zeros(nsteps+1,dtype=np.float64)
+    ratio = np.zeros(nsteps+1,dtype=np.float64)
+    order = np.zeros(nsteps+1,dtype=np.float64)
     # Set initial values in arrays
-    energy[0] = all_energy(lattice,nmax,threads)
+    energy[0] = all_energy(lattice,nmax)
     ratio[0] = 0.5 # ideal value
-    order[0] = get_order(lattice,nmax,threads)
+    order[0] = get_order(lattice,nmax)
 
     # Begin doing and timing some MC steps.
-    initial = openmp.omp_get_wtime()
+    initial = time.time()
     for it in range(1,nsteps+1):
         ratio[it] = MC_step(lattice,temp,nmax)
-        energy[it] = all_energy(lattice,nmax,threads)
-        order[it] = get_order(lattice,nmax,threads)
-    final = openmp.omp_get_wtime()
+        energy[it] = all_energy(lattice,nmax)
+        order[it] = get_order(lattice,nmax)
+    final = time.time()
     runtime = final-initial
     
     # Final outputs
     print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(program, nmax,nsteps,temp,order[nsteps-1],runtime))
     # Plot final frame of lattice and generate output file
-    savedat(lattice,nsteps,temp,runtime,ratio,energy,order,nmax, threads)
+    savedat(lattice,nsteps,temp,runtime,ratio,energy,order,nmax)
     plotdat(lattice,pflag,nmax)
 #=======================================================================
 # Main part of program, getting command line arguments and calling
@@ -384,7 +315,7 @@ if __name__ == '__main__':
         TEMPERATURE = float(sys.argv[3])
         PLOTFLAG = int(sys.argv[4])
         main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG)
-    elif int(len(sys.argv)) == 6:
+    if int(len(sys.argv)) == 6:
         PROGNAME = sys.argv[0]
         ITERATIONS = int(sys.argv[1])
         SIZE = int(sys.argv[2])
@@ -392,20 +323,6 @@ if __name__ == '__main__':
         PLOTFLAG = int(sys.argv[4])
         FILE = sys.argv[5]
         main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG, FILE)
-    elif int(len(sys.argv)) == 7:
-        PROGNAME = sys.argv[0]
-        ITERATIONS = int(sys.argv[1])
-        SIZE = int(sys.argv[2])
-        TEMPERATURE = float(sys.argv[3])
-        PLOTFLAG = int(sys.argv[4])
-        FILE = sys.argv[5]
-        THREADS = int(sys.argv[6])
-        main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG, FILE, THREADS)
     else:
         print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG>".format(sys.argv[0]))
-        print("OR WITH 5 ARGS")
-        print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG> <FILE> <THREADS = 1>".format(sys.argv[0]))
-        print("OR WITH 6 ARGS")
-        print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG> <FILE> <THREADS = THREADS".format(sys.argv[0]))
 #=======================================================================
-
