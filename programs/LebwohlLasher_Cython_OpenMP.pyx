@@ -122,7 +122,7 @@ def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax,threads):
     print("#=====================================================",file=FileOut)
     print("# File created:        {:s}".format(current_datetime),file=FileOut)
     print("# Size of lattice:     {:d}x{:d}".format(nmax,nmax),file=FileOut)
-    print("# Number of Threads  {:d}".format(threads),file=FileOut)
+    print("# Number of Threads    {:d}".format(threads),file=FileOut)
     print("# Number of MC steps:  {:d}".format(nsteps),file=FileOut)
     print("# Reduced temperature: {:5.3f}".format(Ts),file=FileOut)
     print("# Run time (s):        {:8.6f}".format(runtime),file=FileOut)
@@ -368,7 +368,7 @@ def main(str program,int nsteps,int nmax,double temp,int pflag, str file = "0", 
     runtime = final-initial
     
     # Final outputs
-    print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(program, nmax,nsteps,temp,order[nsteps-1],runtime))
+    print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s,  threads: {:d}".format(program, nmax,nsteps,temp,order[nsteps-1],runtime,threads))
     # Plot final frame of lattice and generate output file
     savedat(lattice,nsteps,temp,runtime,ratio,energy,order,nmax, threads)
     plotdat(lattice,pflag,nmax)
@@ -406,6 +406,6 @@ if __name__ == '__main__':
         print("OR WITH 5 ARGS")
         print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG> <FILE> <THREADS = 1>".format(sys.argv[0]))
         print("OR WITH 6 ARGS")
-        print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG> <FILE> <THREADS = THREADS".format(sys.argv[0]))
+        print("Usage: python {} <ITERATIONS> <SIZE> <TEMPERATURE> <PLOTFLAG> <FILE> <THREADS = THREADS>".format(sys.argv[0]))
 #=======================================================================
 
