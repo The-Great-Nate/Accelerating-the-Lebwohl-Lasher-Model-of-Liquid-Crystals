@@ -12,7 +12,7 @@ for size in "${sizes[@]}"; do
         echo "Running with Numba JIT compiler"
         echo "-------------------------------------------"
 
-        python programs/LebwohlLasher_numba.py 500 $size 0.2 0 Test_Configs/Test_Config_$size.txt
+        python programs/LebwohlLasher_numba.py 250 $size 0.2 0 Test_Configs/Test_Config_$size.txt
     done
 done
 echo "Done with numba serial code"

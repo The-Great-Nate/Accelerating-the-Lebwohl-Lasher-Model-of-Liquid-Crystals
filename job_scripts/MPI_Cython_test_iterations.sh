@@ -15,7 +15,7 @@ for size in "${sizes[@]}"; do
             echo "----------------------- $i 'th-teration "-----------------------
 
             # Run and save output
-            mpiexec -n $nproc python programs/run_LL_MPI_Cython.py 500 $size 0.2 0 Test_Configs/Test_Config_$size.txt
+            mpiexec -n $nproc python programs/run_LL_MPI_Cython.py 250 $size 0.2 0 Test_Configs/Test_Config_$size.txt
 
         done
         echo "======================== Done with $nproc process(es). ========================"

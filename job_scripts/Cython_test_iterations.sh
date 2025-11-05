@@ -14,7 +14,7 @@ for size in "${sizes[@]}"; do
         echo "Running with CYTHON"
         echo "-------------------------------------------"
 
-        python programs/run_LL_Cython.py 500 $size 0.2 0 "Test_Configs/Test_Config_$size.txt"
+        python programs/run_LL_Cython.py 250 $size 0.2 0 "Test_Configs/Test_Config_$size.txt"
     done
 done
 echo "Done with original cythonised code"

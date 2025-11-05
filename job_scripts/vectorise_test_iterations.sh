@@ -7,7 +7,7 @@ for size in "${sizes[@]}"; do
         echo "Running Vectorised Form"
         echo "-------------------------------------------"
 
-        python programs/LebwohlLasher_vectorise.py 500 $size 0.2 0 Test_Configs/Test_Config_$size.txt
+        python programs/LebwohlLasher_vectorise.py 250 $size 0.2 0 Test_Configs/Test_Config_$size.txt
     done
 done
 echo "Done with Vectorised code code"

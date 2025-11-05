@@ -1,5 +1,5 @@
 #!/bin/bash
-procs=(1 2 4)
+procs=(1 2 4 6 8)
 sizes=(25 50 100 200)
 # This was running on an I5-8250U system with 4 cores in total, modify if needed
 for size in "${sizes[@]}"; do
@@ -9,7 +9,7 @@ for size in "${sizes[@]}"; do
             echo "----------------------- $i 'th-teration "-----------------------
 
             # Run and save output
-            mpiexec -n $nproc python programs/LebwohlLasher_MPI.py 500 $size 0.2 0 Test_Configs/Test_Config_$size.txt
+            mpiexec -n $nproc python programs/LebwohlLasher_MPI.py 250 $size 0.2 0 Test_Configs/Test_Config_$size.txt
 
         done
         echo "======================== Done with $nproc process(es). ========================"
