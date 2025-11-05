@@ -213,8 +213,6 @@ cdef double all_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int nmax,   comm, i
     else:
         return 0.0
 #=======================================================================#
-@boundscheck(False)
-@wraparound(False)
 def get_order(arr,nmax, comm, rank):
     """
     Arguments:
@@ -316,7 +314,6 @@ def MC_step(cnp.ndarray[cnp.double_t, ndim=2] arr,double Ts,int nmax, int numCol
                   else:
                       arr[ix,iy] -= ang
       update_boundaries(arr, nmax, comm, rank, leftNeighbour, rightNeighbour, leftCol, rightCol, startCol, endCol)
-    print("do i print")
     acceptGlobal = comm.reduce(accept, op = MPI.SUM, root = 0)
     if rank == 0:
       return acceptGlobal/(nmax*nmax)
@@ -324,7 +321,6 @@ def MC_step(cnp.ndarray[cnp.double_t, ndim=2] arr,double Ts,int nmax, int numCol
       return 0.0
 #=======================================================================
 def update_boundaries(cnp.ndarray[cnp.double_t, ndim=2] arr, int nmax,   comm, int rank, int leftNeighbour, int rightNeighbour, cnp.ndarray[cnp.double_t, ndim=1] leftCol, cnp.ndarray[cnp.double_t, ndim=1] rightCol, int startCol, int endCol):
-  print("i working")
   comm.Sendrecv(sendbuf=arr[-1, :], dest=rightNeighbour, sendtag=0, recvbuf=leftCol, source=leftNeighbour, recvtag=0)
   comm.Sendrecv(sendbuf=arr[0, :], dest=leftNeighbour, sendtag=1, recvbuf=rightCol, source=rightNeighbour, recvtag=1)
 #=======================================================================
