@@ -36,10 +36,8 @@ if __name__ == '__main__':
 
     # ### Call main with correct arguments ###
     if FILE == "0":
-        print("File == 0")
         LL_C_OP.main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG, threads = THREADS)
     else:
-        print("FILE IS REAL,")
         print(PLOTFLAG)
         LL_C_OP.main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG, FILE, THREADS)
 #=======================================================================
