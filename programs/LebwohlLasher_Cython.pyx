@@ -130,6 +130,7 @@ def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax):
         print("   {:05d}    {:6.4f} {:12.4f}  {:6.4f} ".format(i,ratio[i],energy[i],order[i]),file=FileOut)
     FileOut.close()
 #=======================================================================
+@boundscheck(False)
 cdef double one_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int ix,int iy,int nmax):
     """
     Arguments:
@@ -166,6 +167,8 @@ cdef double one_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int ix,int iy,int n
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
     return en
 #=======================================================================
+@boundscheck(False)
+@wraparound(False)
 cdef double all_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int nmax):
     """
     Arguments:
