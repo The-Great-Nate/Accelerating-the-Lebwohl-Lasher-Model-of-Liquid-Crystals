@@ -132,6 +132,8 @@ def savedat(arr,nsteps,size,Ts,runtime,ratio,energy,order,nmax):
         print("   {:05d}    {:6.4f} {:12.4f}  {:6.4f} ".format(i,ratio[i],energy[i],order[i]),file=FileOut)
     FileOut.close()
 #===========================================================
+@boundscheck(False)
+@wraparound(False)
 cdef double one_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int ix,int iy,int nmax, cnp.ndarray[cnp.double_t, ndim=1] leftCol, cnp.ndarray[cnp.double_t, ndim=1] rightCol, int startCol, int endCol):
     """
     Arguments:
@@ -181,6 +183,8 @@ cdef double one_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int ix,int iy,int n
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
     return en
 #=======================================================================
+@boundscheck(False)
+@wraparound(False)
 cdef double all_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int nmax,   comm, int rank, cnp.ndarray[cnp.double_t, ndim=1] leftCol, cnp.ndarray[cnp.double_t, ndim=1] rightCol, int startCol, int endCol):
     """
     Arguments:
@@ -209,6 +213,8 @@ cdef double all_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int nmax,   comm, i
     else:
         return 0.0
 #=======================================================================#
+@boundscheck(False)
+@wraparound(False)
 def get_order(arr,nmax, comm, rank):
     """
     Arguments:
