@@ -137,10 +137,14 @@ def savedat(arr,nsteps,size,Ts,runtime,ratio,energy,order,nmax):
 cdef double one_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int ix,int iy,int nmax, cnp.ndarray[cnp.double_t, ndim=1] leftCol, cnp.ndarray[cnp.double_t, ndim=1] rightCol, int startCol, int endCol):
     """
     Arguments:
-	  arr (float(nmax,nmax)) = array that contains lattice data;
+	  arr (cnp.ndarray[cnp.double_t, ndim=2]) = array that contains lattice data;
 	  ix (int) = x lattice coordinate of cell;
 	  iy (int) = y lattice coordinate of cell;
-      nmax (int) = side length of square lattice.
+    nmax (int) = side length of square lattice.
+    leftCol (cnp.ndarray[cnp.double_t, ndim=1]) left neighbouring column a proc stores
+    righCol (cnp.ndarray[cnp.double_t, ndim=1]) left neighbouring column a proc stores
+    startCol (int) index of start column relative to the proc
+    endCol (int) index of end column relative to the proc
     Description:
       Function that computes the energy of a single cell of the
       lattice taking into account periodic boundaries.  Working with
@@ -188,8 +192,14 @@ cdef double one_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int ix,int iy,int n
 cdef double all_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int nmax,   comm, int rank, cnp.ndarray[cnp.double_t, ndim=1] leftCol, cnp.ndarray[cnp.double_t, ndim=1] rightCol, int startCol, int endCol):
     """
     Arguments:
-	  arr (float(nmax,nmax)) = array that contains lattice data;
+	    arr (cnp.ndarray[cnp.double_t, ndim=2]) = array that contains lattice data;
       nmax (int) = side length of square lattice.
+      comm = MPI comm world object
+      rank = RANK OF MPI PROCESS
+      leftCol (cnp.ndarray[cnp.double_t, ndim=1]) left neighbouring column a proc stores
+      righCol (cnp.ndarray[cnp.double_t, ndim=1]) left neighbouring column a proc stores
+      startCol (int) index of start column relative to the proc
+      endCol (int) index of end column relative to the proc
     Description:
       Function to compute the energy of the entire lattice. Output
       is in reduced units (U/epsilon).
@@ -205,6 +215,7 @@ cdef double all_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int nmax,   comm, i
     for i in range(local_width):
         for j in range(nmax):
             enlocal += one_energy(arr, i, j, nmax, leftCol, rightCol, startCol, endCol)
+    # Reduce local sums into global sum
     py_enall = comm.reduce(enlocal, op=MPI.SUM, root=0)
 
     if rank == 0:
@@ -213,7 +224,7 @@ cdef double all_energy(cnp.ndarray[cnp.double_t, ndim=2] arr,int nmax,   comm, i
     else:
         return 0.0
 #=======================================================================#
-def get_order(arr,nmax, comm, rank):
+def get_order(cnp.ndarray[cnp.double_t, ndim=2] arr,int nmax,   comm, int rank):
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -242,6 +253,7 @@ def get_order(arr,nmax, comm, rank):
             for i in range(arr.shape[0]):
                 for j in range(nmax):
                     Qab[a,b] += 3*lab[a,i,j]*lab[b,i,j] - delta[a,b]
+    # Reduce local sum into one global sum
     QabGlobal = comm.reduce(Qab, op = MPI.SUM, root = 0)
     if rank == 0:
       QabGlobal = QabGlobal/(2*nmax*nmax)
@@ -253,9 +265,17 @@ def get_order(arr,nmax, comm, rank):
 def MC_step(cnp.ndarray[cnp.double_t, ndim=2] arr,double Ts,int nmax, int numCols,   comm, int rank, int leftNeighbour, int rightNeighbour, cnp.ndarray[cnp.double_t, ndim=1] leftCol, cnp.ndarray[cnp.double_t, ndim=1] rightCol, int startCol, int endCol):
     """
     Arguments:
-	  arr (float(nmax,nmax)) = array that contains lattice data;
-	  Ts (float) = reduced temperature (range 0 to 2);
+	  arr (cnp.ndarray[cnp.double_t, ndim=2]) = array that contains lattice data;
+	  Ts (double) = reduced temperature (range 0 to 2);
       nmax (int) = side length of square lattice.
+    comm = MPI comm world object
+    rank (int) = RANK OF MPI PROCESS
+    leftNeighbour (int) = Rank of Left Neighbouring rank
+    rightNeighbour (int) = Rank of Right Neighbouring rank
+    leftCol (cnp.ndarray[cnp.double_t, ndim=1]) left neighbouring column a proc stores
+      righCol (cnp.ndarray[cnp.double_t, ndim=1]) left neighbouring column a proc stores
+      startCol (int) index of start column relative to the proc
+      endCol (int) index of end column relative to the proc
     Description:
       Function to perform one MC step, which consists of an average
       of 1 attempted change per lattice site.  Working with reduced

@@ -32,8 +32,6 @@ if __name__ == '__main__':
         else:
             THREADS = int(sys.argv[5])
 
-
-
     # ### Call main with correct arguments ###
     if FILE == "0":
         LL_C_OP.main(PROGNAME, ITERATIONS, SIZE, TEMPERATURE, PLOTFLAG, threads = THREADS)
