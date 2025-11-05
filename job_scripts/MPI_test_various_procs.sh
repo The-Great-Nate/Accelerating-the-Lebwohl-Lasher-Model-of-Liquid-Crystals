@@ -1,7 +1,7 @@
 #!/bin/bash
 procs=(1 2 4 6 8)
 sizes=(25 50 100 200)
-# This was running on an I5-8250U system with 4 cores in total, modify if needed
+# This was running on an Ryzen 7 9800X3D system with 8 cores in total, modify if needed
 for size in "${sizes[@]}"; do
     for nproc in "${procs[@]}"; do
         echo "======================== Running with $nproc MPI process(es) at $size big... ========================"
