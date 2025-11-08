@@ -1,6 +1,6 @@
 # Lebowhl Lasher Model of Liquid Crystals - Accelerated
+<img width="678" height="678" alt="cropped render" src="https://github.com/user-attachments/assets/becfebc2-4add-4cf6-8ecb-cd20d4ceebd5" />
 
-<img width="1280" height="960" alt="(100, 100)0 8859314693146649-1" src="https://github.com/user-attachments/assets/7fa84537-1360-4a2e-9b7f-1b9bf15ac848" />
 
 This is a 2D Lebwohl-Lasher liquid crystal model accelerated through various accelerated computing approaches.
 
