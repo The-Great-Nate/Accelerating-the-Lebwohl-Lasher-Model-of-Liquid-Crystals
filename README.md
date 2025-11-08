@@ -1,5 +1,7 @@
 # Lebowhl Lasher Model of Liquid Crystals - Accelerated
 
+[(100, 100)0.8859314693146649.pdf](https://github.com/user-attachments/files/23434734/100.100.0.8859314693146649.pdf)
+
 This is a 2D Lebwohl-Lasher liquid crystal model accelerated through various accelerated computing approaches.
 
 The original serial code was modified to allow pre-configured lattices to be input to statistically test the reproduciblity of the parallelised programs.
